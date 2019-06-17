@@ -7,6 +7,8 @@ import csv
 from copy import deepcopy
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
 
 def read_file(path):
     """
@@ -44,7 +46,7 @@ def the_kind_of_feature(feature):
         return 'string'
 
 
-def fix(X):
+def fix(features, X):
     """
 
     :param X:
@@ -57,7 +59,7 @@ def fix(X):
         for j in range(len(fixed_X[i])):
             if the_kind_of_feature(features[j]) == 'string':
                 fixed_X[i][j] = [0]
-                fixed_x[i][j] = np.array(fixed_X[i][j])
+                # fixed_X[i][j] = np.array(fixed_X[i][j])
 
     # fix json vector features
     json_vec = []
@@ -76,9 +78,16 @@ def fix(X):
             if not genre:
                 continue
             for item in genre:
-                if not item['name'] in all_genres:
-                    all_genres.append(item['name'])
-
+                # if not item['name'] in all_genres:
+                all_genres.append(item['name'])
+        List_set = set(all_genres)
+        c = []
+        for item in List_set:
+            if all_genres.count(item) > 100:
+                c.append(item)
+        if not c:
+            c = [0]
+        all_genres = c
         Xs_genre = []
         for i in range(len(X)):
             x_genre = [0] * len(all_genres)
@@ -94,7 +103,7 @@ def fix(X):
 
         for i in range(len(fixed_X)):
             fixed_X[i][json] = Xs_genre[i]
-            fixed_x[i][json] = np.array(fixed_X[i][json])
+            # fixed_X[i][json] = np.array(fixed_X[i][json])
 
     # fix other vector features
     other_vec = []
@@ -124,6 +133,7 @@ def fix(X):
 
         for i in range(len(fixed_X)):
             fixed_X[i][vec] = Xs_vec[i]
+            # fixed_X[i][vec] = np.array(fixed_X[i][vec])
 
     # fix number vector features
     num_vecs = [feature for feature in features if (the_kind_of_feature(feature) == 'number')]
@@ -156,6 +166,7 @@ def fix(X):
         for x in fixed_X:
             f = deepcopy(x[i])
             x[i] = [(float(f) - left) / (right - left)]
+            # x[i] = np.array(x[i])
     return fixed_X
 
 
@@ -174,30 +185,233 @@ def count_len(feature):
     return vector_len
 
 
-if __name__ == '__main__':
-    path = '/Users/gangwei/Desktop/565project1/movies.csv'
-    features, X = read_file(path)
+def get_top_250():
+    path = './movies.csv'
+    movies = pd.read_csv(path)
+    movies['total_votes'] = movies['vote_average'] * movies['vote_count']
+    movies.sort_values('total_votes', ascending=False, inplace=True)
+    Top250 = movies.head(250)
+    Top250.to_csv('./movies_250.csv')
 
-    fixed_x = fix(X)
-    nokeywords = deepcopy(fixed_x)
+
+def pca_2d(K, dim):
+
+    newpath = './movies_250.csv'
+    # global features
+    features, X = read_file(newpath)
+    fixed_X = fix(features,X)
+    nokeywords = deepcopy(fixed_X)
     for x in nokeywords:
-        x[4] = [0]
-        # x[9] = [0]'''
-
-    k = 10
-
-    errs = []
-    for i in range(k):
-        U = random.sample(nokeywords, i+1)
-        [alloc, er] = kmeans.iteration(nokeywords, U)
-        errs.append(er)
-        print(alloc)
-    kk = np.linspace(1, k, k)
-    plt.plot(kk, errs)
+        for i in range(21):
+            if i in [0,2,4,5,6,10,11,15,16]:
+                x[i] = [0]
+    # print(nokeywords[0],'\n', nokeywords[1])
+    k = K
+    x_pca = deepcopy(nokeywords)
+    for n in range(len(x_pca)):
+        for f in range(len(x_pca[n])):
+            # if f in []
+            x_pca[n][f] = sum([nokeywords[n][f][_] for _ in range(len(nokeywords[n][f]))])
+    pca = PCA(n_components=dim)
+    pca_fixed_x = pca.fit_transform(x_pca)
+    for x in pca_fixed_x:
+        for f in x:
+            f = [f]
+    assignn = assign_250(K)
+    diction = {}
+    for i in range(K):
+        diction[i] = []
+    for i in range(len(pca_fixed_x)):
+        a = pca_fixed_x[i]
+        diction[assignn[i]].append(a)
+    for i in range(K):
+        plt.scatter(np.array(diction[i])[:, 0], np.array(diction[i])[:, 1])  # label='%d cluster' % i)
+    # plt.legend()
     plt.show()
 
-    # print(kmeans.getCluster(fixed_x, U))
-    # count_len(X[0])
-    '''name = ['aaaa'] * 20
-    test = pd.DataFrame(columns=name, data=nokeywords)
-    test.to_csv('/Users/gangwei/Desktop/565project1/movies_fixed_nokey.csv')'''
+
+def assign_250(K):
+    path = './movies.csv'
+    movies = pd.read_csv(path)
+    movies['total_votes'] = movies['vote_average'] * movies['vote_count']
+    movies.sort_values('total_votes', ascending=False, inplace=True)
+    Top250 = movies.head(250)
+    Top250.to_csv('./movies_250.csv')
+    newpath = './movies_250.csv'
+    # global features
+    features, X = read_file(newpath)
+    fixed_X = fix(features,X)
+
+    k = K
+    errs = []
+
+    U = random.sample(fixed_X, k)
+    alloc, er = kmeans.iteration(fixed_X, U)
+
+    assignments = [[i] for i in range(len(fixed_X))]
+    for i in range(len(fixed_X)):
+        for j in range(k):
+            if fixed_X[i] in alloc[j]:
+                assignments[i].append(j)
+    name = ['id', 'label']
+    test = pd.DataFrame(columns=name, data=assignments)
+    test.to_csv('./output.csv')
+    assign = np.array(assignments)
+    assignn = assign[:,1]
+    return assignn
+
+
+def compare_kmeans_kmeanspp(K):
+    path = './movies.csv'
+    features, X = read_file(path)
+    fixed_x = fix(features, X)
+    k = K
+    errs = []
+    errspp = []
+    # kmeans
+    for i in range(k):
+        print("k = ", i+1)
+        U = random.sample(fixed_x, i+1)
+        alloc, er = kmeans.iteration(fixed_x, U)
+        errs.append(er)
+    kk = np.linspace(1, k, k)
+    plt.plot(kk, errs, label='k-means')
+    # kmeans++
+    for i in range(k):
+        print("k = ", i+1)
+        U = [0]*(i+1)
+        U[0] = random.sample(fixed_x, 1)[0]
+        U = kmeans.get_k_means_pp(fixed_x, U)
+        alloc, er = kmeans.iteration(fixed_x, U)
+        errspp.append(er)
+    kk = np.linspace(1, k, k)
+    plt.plot(kk, errspp, label='k-means++')
+    plt.legend()
+    plt.show()
+
+
+def find_k(K):
+
+    f = pca_to_1d()
+    fixed_x = [0]*len(f)
+    for i in range(len(f)):
+        fixed_x[i] = [f[i][0]]
+    k = K
+    errs = []
+    errspp = []
+    run_k('./movies_250.csv', K)
+    for i in range(k):
+        print("k = ", i+1)
+        U = random.sample(fixed_x, i+1)
+        alloc, er = kmeans.iteration(fixed_x, U)
+        errs.append(er)
+    return errs
+
+
+def run_k_means_pp(K):
+    path = './movies.csv'
+    features, X = read_file(path)
+    fixed_x = fix(features, X)
+    k = K
+    # initialize U[0
+    U = [0] * (k)
+    U[0] = random.sample(fixed_x, 1)[0]
+    # kmeans++
+    U = kmeans.get_k_means_pp(fixed_x, U)
+    alloc, er = kmeans.iteration(fixed_x, U)
+
+    assignments = [[i] for i in range(len(fixed_x))]
+    for i in range(len(fixed_x)):
+        for j in range(k):
+            if fixed_x[i] in alloc[j]:
+                assignments[i].append(j)
+    name = ['id', 'label']
+    test = pd.DataFrame(columns=name, data=assignments)
+    test.to_csv('./output_k++.csv')
+
+
+def run_k(path,K):
+    features, X = read_file(path)
+    fixed_x = fix(features, X)
+    k = K
+    errs = []
+
+    U = random.sample(fixed_x, k)
+    alloc, er = kmeans.iteration(fixed_x, U)
+
+    assignments = [[i] for i in range(len(fixed_x))]
+    for i in range(len(fixed_x)):
+        for j in range(k):
+            if fixed_x[i] in alloc[j]:
+                assignments[i].append(j)
+    name = ['id', 'label']
+    test = pd.DataFrame(columns=name, data=assignments)
+    test.to_csv('./output_1d.csv')
+
+
+def run_k_means(K):
+    path = './movies.csv'
+    features, X = read_file(path)
+    fixed_x = fix(features, X)
+    k = K
+    errs = []
+
+    U = random.sample(fixed_x, k)
+    alloc, er = kmeans.iteration(fixed_x, U)
+
+    assignments = [[i] for i in range(len(fixed_x))]
+    for i in range(len(fixed_x)):
+        for j in range(k):
+            if fixed_x[i] in alloc[j]:
+                assignments[i].append(j)
+    name = ['id', 'label']
+    test = pd.DataFrame(columns=name, data=assignments)
+    test.to_csv('./output.csv')
+
+
+def pca_to_1d():
+    path = './movies_250.csv'
+    features, X = read_file(path)
+    fixed_X = fix(features, X)
+    nokeywords = deepcopy(fixed_X)
+    for x in nokeywords:
+        for i in range(21):
+            if i in [0,2,4,5,6,10,11,15,16]:
+                x[i] = [0]
+    # k = K
+    x_pca = deepcopy(nokeywords)
+    for n in range(len(x_pca)):
+        for f in range(len(x_pca[n])):
+            # if f in []
+            x_pca[n][f] = sum([nokeywords[n][f][_] for _ in range(len(nokeywords[n][f]))])
+    pca = PCA(n_components=1)
+    pca_fixed_x = pca.fit_transform(x_pca)
+    return pca_fixed_x
+
+
+def run_k_means_pp_disagreement(K):
+    path = './movies_250.csv'
+    features, X = read_file(path)
+    fixed_x = fix(features, X)
+    k = K
+    # initialize U[0
+    U = [0] * (k)
+    U[0] = random.sample(fixed_x, 1)[0]
+    # kmeans++
+    U = kmeans.get_k_means_pp(fixed_x, U)
+    alloc, er = kmeans.iteration(fixed_x, U)
+
+    assignments = [[i] for i in range(len(fixed_x))]
+    for i in range(len(fixed_x)):
+        for j in range(k):
+            if fixed_x[i] in alloc[j]:
+                assignments[i].append(j)
+    name = ['id', 'label']
+    test = pd.DataFrame(columns=name, data=assignments)
+    test.to_csv('./output_k++_disagreement.csv')
+    ppath = './output_k++_disagreement.csv'
+    movies = pd.read_csv(ppath)
+
+
+if __name__ == '__main__':
+    run_k_means_pp(10)
